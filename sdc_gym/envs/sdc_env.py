@@ -159,8 +159,8 @@ class SDC_Full_Env(gym.Env):
 
     def reset(self):
         # Draw a lambda (here: negative real for starters)
-        self.lam = (1 * np.random.uniform(low=-100.0, high=0.0) + 0j * np.random.uniform(low=0.0, high=10.0))
-        #self.lam = -10
+        self.lam = (1 * np.random.uniform(low=-10.0, high=0.0) + 0j * np.random.uniform(low=0.0, high=10.0))
+        #self.lam = -1
         
         # Compute the system matrix
         self.C = np.eye(self.coll.num_nodes) - self.lam * self.dt * self.Q
@@ -189,58 +189,55 @@ class SDC_Step_Env(SDC_Full_Env):
 
     def step(self, action):
 
+        #u, residual = self.state
 
         u, old_residual = self.state
 
         # I read somewhere that the actions should be scaled to [-1,1],
         # scale it back to [0,1] here...
         scaled_action = np.interp(action, (-1, 1), (0, 1))
-
         # Get Q_delta, based on self.prec (and/or scaled_action)
         Qdmat = self._get_prec(scaled_action=scaled_action, M=u.size)
-
         # Compute the inverse of P
         Pinv = np.linalg.inv(
             np.eye(self.coll.num_nodes) - self.lam * self.dt * Qdmat,
         )
 
         # Do the iteration (note that we already have the residual)
+        #u += Pinv @ residual
         u += Pinv @ old_residual
 
         # The new residual and its norm
         residual = self.u0 - self.C @ u
 
+
+
         norm_res = np.linalg.norm(residual, np.inf)
 
         self.niter += 1
-
         # Check if something went wrong
-        err = np.isnan(norm_res) or np.isinf(norm_res)
+        err = np.isnan(norm_res) or np.isinf(norm_res) or abs(np.linalg.norm(self.initial_residual))*10 < abs(np.linalg.norm(residual))
         # Stop iterating when converged, when iteration count is
         # too high or when something bad happened
-        done = norm_res < self.restol or self.niter >= 50 or err
-
+        done = norm_res < self.restol or self.niter >= 50 or err 
         if not err:
             reward = -1
-            factor = 1
-            weight = 0.5
-            new_reward = abs((math.log(np.linalg.norm(old_residual*factor)) - math.log(np.linalg.norm(residual*factor)) ) / (math.log(np.linalg.norm(self.initial_residual*factor)) - math.log(self.restol*factor) )) # summe ueber alle Iterationen liegt auf [0,1] (hoffentlich)
-            new_reward *= weight 
+            new_reward = ((math.log(np.linalg.norm(old_residual)) - math.log(np.linalg.norm(residual)) ) / (math.log(np.linalg.norm(self.initial_residual)) - math.log(self.restol) )) # summe ueber alle Iterationen liegt auf [0,1] (hoffentlich)
+            new_reward *= 0.5 
             new_reward -= 0.01 # jede der 50 Iterationen wird bestraft 
-            #print(new_reward)
 
 
         else:
             # return overall reward of -51
             # (slightly worse than -50 in the "not converged" scenario)
-            reward = -51 + self.niter
-            new_reward = -50+ self.niter
+            reward = -51 #+ self.niter
+            new_reward = -1
 
         self.state = (u, residual)
-
         info = {
             'residual': norm_res,
             'niter': self.niter,
             'lam': self.lam,
         }
-        return (self.state, new_reward, done, info)
+        return (self.state, reward, done, info)
+        #return (self.state, new_reward, done, info)

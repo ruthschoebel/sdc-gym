@@ -1,15 +1,13 @@
 import argparse
+import json
 from pathlib import Path
 import time
 
-import gym
-from stable_baselines.common.callbacks import EvalCallback
-from stable_baselines.common.vec_env import DummyVecEnv, VecNormalize
-import stable_baselines
 import matplotlib.pyplot as plt
 
 import sdc_gym
-
+import utils
+import numpy as np
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -27,6 +25,14 @@ def parse_args():
             '"Difficulty" of the problem '
             '(proportionally relates to nth-order differential equation)'
             '(choose M = 3 or M = 5 for comparing MIN-preconditioner)'
+        ),
+    )
+    parser.add_argument(
+        '--dt',
+        type=float,
+        default=1.0,
+        help=(
+            'Size of time step.'
         ),
     )
     parser.add_argument(
@@ -50,7 +56,7 @@ def parse_args():
     parser.add_argument(
         '--envname',
         type=str,
-        default='sdc-v0',
+        default='sdc-v1',
         choices=['sdc-v0', 'sdc-v1'],
         help=(
             'Gym environment to use;\n    sdc-v0 – SDC with a full iteration '
@@ -87,9 +93,20 @@ def parse_args():
         help='Class of model policy.',
     )
     parser.add_argument(
+        '--policy_kwargs',
+        type=json.loads,
+        default={},
+        help=(
+            'Keyword arguments for policy creation. '
+            'See the documentation for details.'
+            'Example for MlpLstmPolicy: '
+            '`--policy_kwargs \'{"net_arch": [128, 128, "lstm"]}\'`'
+        ),
+    )
+    parser.add_argument(
         '--tests',
         type=float,
-        default=5000,
+        default=50,
         help='Number of test runs for each preconditioning method.',
     )
     parser.add_argument(
@@ -98,52 +115,25 @@ def parse_args():
         default=4,
         help='How many environments to use in parallel.',
     )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=None,
+        help=(
+            'Base seed for seeding the environments. For multiple '
+            'environments, all will have different seeds based on this one.'
+        ),
+    )
+    parser.add_argument(
+        '--eval_freq',
+        type=int,
+        default=0,
+        help=(
+            'How often to evaluate the model during training, storing the '
+            'best performing one. If this is 0, do not evaluate.'
+        ),
+    )
     return parser.parse_args()
-
-
-def _get_model_class(model_class_str):
-    """Return a model class according to `model_class_str`."""
-    try:
-        model_class = getattr(stable_baselines, model_class_str)
-    except AttributeError:
-        raise AttributeError(
-            f"could not find model class '{model_class_str}' "
-            f'in module `stable_baselines`'
-        )
-    assert issubclass(model_class, stable_baselines.common.BaseRLModel), \
-        ('model class must be a subclass of '
-         '`stable_baselines.common.BaseRLModel`')
-    return model_class
-
-
-def _get_policy_class(policy_class_str, model_class_str):
-    if model_class_str.upper() == 'DDPG':
-        policy_class_module = stable_baselines.ddpg.policies
-    elif model_class_str.upper() == 'DQN':
-        policy_class_module = stable_baselines.deepq.policies
-    else:
-        policy_class_module = stable_baselines.common.policies
-
-    try:
-        policy_class = getattr(
-            policy_class_module,
-            policy_class_str,
-        )
-    except AttributeError:
-        try:
-            policy_class = globals()[policy_class_str]
-        except KeyError:
-            raise AttributeError(
-                f"could not find policy class '{policy_class_str}' "
-                f'in module `stable_baselines.common.policies` '
-                f'or in this module'
-            )
-    assert issubclass(
-        policy_class,
-        stable_baselines.common.policies.BasePolicy,
-    ), ('policy class must be a subclass of '
-        '`stable_baselines.common.policies.BasePolicy`')
-    return policy_class
 
 
 def test_model(model, env, ntests, name):
@@ -155,16 +145,14 @@ def test_model(model, env, ntests, name):
     results = []
 
     num_envs = env.num_envs
-    # Amount of test loops to run
-    ntests = ntests // num_envs * num_envs
     # Amount of test that will be ran in total
     ntests_total = ntests * num_envs
-
+    a=[]
     for i in range(ntests):
         state = None
         obs = env.reset()
         done = [False for _ in range(num_envs)]
-
+        #print(i)
         while not all(done):
             action, state = model.predict(
                 obs,
@@ -173,6 +161,12 @@ def test_model(model, env, ntests, name):
                 deterministic=True,
             )
             obs, rewards, done, info = env.step(action)
+            scaled_action = np.interp(action, (-1, 1), (0, 1))
+
+        if (name=='RL'):
+            print(scaled_action)
+            a = np.append(a, scaled_action)        
+
 
         for (env_, info_) in zip(env.envs, info):
             # We work on the info here because its information is
@@ -184,6 +178,26 @@ def test_model(model, env, ntests, name):
                 # Store each iteration count together with the respective
                 # lambda to make nice plots later on
                 results.append((info_['lam'].real, info_['niter']))
+    if (name=='RL'):
+        print(a)
+        a=a.reshape(int(a.size/3),3)
+        print("Qd_11")
+        print("Mittel ", np.mean(a[:,0])) #Mittelwert
+        print("Abweichung ", np.std(a[:,0]))  #Standardabweichung
+        print("Maximum", np.max(a[:,0]))  #Maximum
+        print("Minimum ", np.min(a[:,0]))
+
+        print("Qd_22")
+        print("Mittel ", np.mean(a[:,1])) #Mittelwert
+        print("Abweichung ", np.std(a[:,1]))  #Standardabweichung
+        print("Maximum", np.max(a[:,1]))  #Maximum
+        print("Minimum ", np.min(a[:,1]))
+
+        print("Qd_33")
+        print("Mittel ", np.mean(a[:,2])) #Mittelwert
+        print("Abweichung ", np.std(a[:,2]))  #Standardabweichung
+        print("Maximum", np.max(a[:,2]))  #Maximum
+        print("Minimum ", np.min(a[:,2]))
 
     # Write out mean number of iterations (smaller is better) and the
     # success rate (target: 100 %)
@@ -206,81 +220,22 @@ def plot_results(results, color, label):
     )
 
 
-def _find_free_path(format_path):
-    """Get a path following `format_path` into which a single incrementing
-    number is interpolated until a non-existing path is found.
-    """
-    i = 0
-    path = Path(format_path.format(i))
-    while path.exists():
-        i += 1
-        path = Path(format_path.format(i))
-    return path
-
-
-def make_env(
-        args,
-        seed,
-        num_envs=None,
-        include_norm=False,
-        norm_obs=False,
-        norm_reward=True,
-        **kwargs,
-):
-    env = DummyVecEnv([
-        lambda: gym.make(
-            args.envname,
-            M=args.M,
-            seed=seed + i if seed is not None else None,
-            **kwargs,
-        )
-        for i in range(args.num_envs if num_envs is None else num_envs)
-    ])
-    if include_norm:
-        # When training, set `norm_reward = True`, I hear...
-        env = VecNormalize(
-            env,
-            norm_obs=norm_obs,
-            norm_reward=norm_reward,
-        )
-    return env
-
-
 def main():
     args = parse_args()
-    seed = 0
-
-    # Set parameters for SDC
-    # When to stop iterating (lower means better solution, but
-    # more iterations)
-    restol = args.restol
-
-    # Set parameters for RL
-    # 'sdc-v0' –  SDC with a full iteration per step
-    #             (no intermediate observations)
-    # 'sdc-v1' –  SDC with a single iteration per step
-    #             (and intermediate observations)
-    envname = args.envname
+    seed = args.seed
+    eval_seed = seed
+    if eval_seed is not None:
+        eval_seed += args.num_envs
 
     # ---------------- TRAINING STARTS HERE ----------------
 
     # Set up gym environment
-    env = make_env(args, seed=seed, include_norm=True, dt=1.0, restol=restol)
-    eval_env = make_env(
-        args,
-        seed=seed + args.num_envs,
-        include_norm=True,
-        norm_reward=False,
-        num_envs=1,
-        dt=1.0,
-        restol=restol,
-    )
-
+    env = utils.make_env(args, include_norm=True)
     # Set up model
-    model_class = _get_model_class(args.model_class)
-    policy_class = _get_policy_class(args.policy_class, args.model_class)
+    model_class = utils.get_model_class(args.model_class)
+    policy_class = utils.get_policy_class(args.policy_class, args.model_class)
 
-    policy_kwargs = {}
+    policy_kwargs = args.policy_kwargs
 
     # Learning rate to try for PPO2: 1E-05
     # Learning rate to try for ACKTR: 1E-03
@@ -288,28 +243,23 @@ def main():
     if args.rescale_lr:
         learning_rate *= args.num_envs
 
-    best_dirname = Path(f'best_sdc_model_{args.model_class.lower()}_'
-                        f'{args.policy_class.lower()}_{learning_rate}')
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=str(best_dirname),
-        eval_freq=500,
-        deterministic=True,
-        render=False,
-    )
+    eval_callback = utils.create_eval_callback(args, learning_rate)
 
-    model = model_class(
-        policy_class,
-        env,
-        verbose=1,
-        policy_kwargs=policy_kwargs,
-        tensorboard_log=str(Path(
+    model_kwargs = {
+        'verbose': 1,
+        'policy_kwargs': policy_kwargs,
+        'tensorboard_log': str(Path(
             f'./sdc_tensorboard/'
             f'{args.model_class.lower()}_{args.policy_class.lower()}/'
         )),
-        learning_rate=learning_rate,
-        seed=seed,
-    )
+        'learning_rate': learning_rate,
+        'seed': seed,
+    }
+
+    utils.check_num_envs(args, policy_class)
+    utils.maybe_fix_nminibatches(model_kwargs, args, policy_class)
+
+    model = model_class(policy_class, env, **model_kwargs)
 
     start_time = time.perf_counter()
     # Train the model (need to put at least 100k steps to
@@ -326,32 +276,28 @@ def main():
 
     # ---------------- TESTING STARTS HERE ----------------
 
+    # Not vectorizing is faster for testing for some reason.
+    num_test_envs = args.num_envs if policy_class.recurrent else 1
+
     ntests = int(args.tests)
+    ntests = utils.maybe_fix_ntests(ntests, num_test_envs)
 
     # Load the trained agent for testing
     # model = model_class.load(fname)
 
     start_time = time.perf_counter()
     # Test the trained model.
-    env = make_env(
-        args,
-        seed=seed + args.num_envs,
-        num_envs=1,
-        dt=1.0,
-        restol=restol,
-    )
+    env = utils.make_env(args, num_envs=num_test_envs, seed=eval_seed)
     results_RL = test_model(model, env, ntests, 'RL')
 
     # Restart the whole thing, but now using the LU preconditioner (no RL here)
     # LU is serial and the de-facto standard. Beat this (or at least be on par)
     # and we win!
-    env = make_env(
+    env = utils.make_env(
         args,
-        seed=seed + args.num_envs,
-        num_envs=1,
-        dt=1.0,
-        restol=restol,
+        num_envs=num_test_envs,
         prec='LU',
+        seed=eval_seed,
     )
     results_LU = test_model(model, env, ntests, 'LU')
 
@@ -359,13 +305,11 @@ def main():
     # (no RL here)
     # This minimization approach are just magic numbers we found using
     # indiesolver.com, parallel and proof-of-concept
-    env = make_env(
+    env = utils.make_env(
         args,
-        seed=seed + args.num_envs,
-        num_envs=1,
-        dt=1.0,
-        restol=restol,
+        num_envs=num_test_envs,
         prec='min',
+        seed=eval_seed,
     )
     results_min = test_model(model, env, ntests, 'MIN')
     duration = time.perf_counter() - start_time
@@ -381,7 +325,7 @@ def main():
 
     plt.legend()
 
-    fig_path = _find_free_path('results_{:>04}.pdf')
+    fig_path = utils.find_free_path('results_{:>04}.pdf')
     plt.savefig(fig_path, bbox_inches='tight')
 
     plt.show()
