@@ -186,13 +186,22 @@ class SDC_Full_Env(gym.Env):
                     ]
                 def rho(x):
                     return max(abs(np.linalg.eigvals(self.lam   *   np.linalg.inv( np.eye(self.num_nodes)    -  self.lam *  np.diag([x[i] for i in range(self.num_nodes)])   ).dot(self.Q    -   np.diag([x[i] for i in range(self.num_nodes)]))    )                   ))
-                x = opt.minimize(rho, x0, method='Nelder-Mead').x
-
+                x = opt.minimize(rho, x0, method='Nelder-Mead').x       
             else:
                 # if M is some other number, take zeros. This won't work
                 # well, but does not raise an error
                 x = np.zeros(M)
             #print("optMIN prec")
+            np.fill_diagonal(Qdmat, x)
+        elif (self.prec == 'trivial'): #TODO set argument if user wants to see MIN, optimized MIN or both
+            Qdmat = np.zeros_like(self.Q)
+            if M == 3:
+                Qdmat = np.zeros_like(self.Q)
+                x = [
+                        1.0,
+                        1.0,
+                        1.0,
+                    ]
             np.fill_diagonal(Qdmat, x)
         else:
             raise NotImplementedError()
