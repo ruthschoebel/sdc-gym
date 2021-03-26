@@ -4,6 +4,7 @@ import numpy as np
 import scipy.sparse as sp
 from pySDC.core.Problem import ptype
 from pySDC.core.Errors import ParameterError, ProblemError
+import scipy.optimize as opt
 
 # noinspection PyUnusedLocal
 class Flame(ptype):
@@ -40,6 +41,20 @@ class Flame(ptype):
 
         # nu wird so gewaehlt, dass die rechte Seite nu/(dx^2)*A den Eigenwert lambda hat
         self.nu = 1.0
+        
+
+  
+
+        #def root_conv(d):
+        #    exact=[]
+        #    n=3
+        #    for time in t:
+        #        exact = np.append( exact, 0.5 * (1 - np.tanh((self.xvalues - 2.0/d * time) / d   ) ))
+        #    return max(       abs( np.linalg.eigvals( np.kron(  np.eye(int(n))   , self.A) + sp.diags(8./(d*d) * (2* exact-3*exact**2))   ))) + self.lam
+
+
+        #d0=1
+        #print(opt.minimize(root_conv, d0, method='Nelder-Mead').x , self.lam)
         self.d =   -self.lam/ max(abs(np.linalg.eigvals(self.A)))*0.001 #just a random number with nice results
         self.A *= self.nu
         self.rhs_mat = self.A 
