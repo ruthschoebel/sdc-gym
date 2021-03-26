@@ -247,7 +247,8 @@ def make_env(
 
             #'train_heat',
             #'test_heat',
-            'run_heat'
+            #'run_heat'
+            'run_example'
     ]:
         args_kwargs[arg] = kwargs.pop(arg, getattr(args, arg))
     all_kwargs = {**kwargs, **args_kwargs}

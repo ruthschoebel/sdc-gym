@@ -201,58 +201,84 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
 
     start_time = time.perf_counter()
 
-
-    # Test the trained model.
-    env = utils.make_env(args, num_envs=num_test_envs, seed=seed)
-    results_RL = test_model(
-        model, env, ntests, 'RL', stats_path=stats_path)
-
-    # Restart the whole thing, but now using the LU preconditioner (no RL here)
-    # LU is serial and the de-facto standard. Beat this (or at least be on par)
-    # and we win!
-    env = utils.make_env(
-        args,
-        num_envs=num_test_envs,
-        prec='LU',
-        seed=seed,
-    )
-    results_LU = test_model(model, env, ntests, 'LU')
-
-    # Restart the whole thing, but now using the minization preconditioner
-    # (no RL here)
-    # This minimization approach are just magic numbers we found using
-    # indiesolver.com, parallel and proof-of-concept
-    env = utils.make_env(
-        args,
-        num_envs=num_test_envs,
-        prec='min',
-        seed=seed,
-    )
-    results_min = test_model(model, env, ntests, 'MIN')
-
-
-    # Restart the whole thing, but now using the optimized minization preconditioner
-    # (no RL here)
-    env = utils.make_env(
-        args,
-        num_envs=num_test_envs,
-        prec='optMIN',
-        seed=seed,
-    )
-    results_optmin = test_model(model, env, ntests, 'optMIN')
-
-    duration = time.perf_counter() - start_time
-    print(f'Testing took {duration} seconds.')
-
-
     # Plot all three iteration counts over the lambda values
     plt.xlabel('re(λ)')
     plt.ylabel('iterations')
 
+    # Test the trained model.
+    env = utils.make_env(args, num_envs=num_test_envs, seed=seed)
+    results_RL = test_model( model, env, ntests, 'RL', stats_path=stats_path)
     plot_results(results_RL, color='b', label='RL')
-    plot_results(results_LU, color='r', label='LU')
-    plot_results(results_min, color='g', label='MIN')
-    plot_results(results_optmin, color='y', label='optMIN')
+
+
+    if (args.show_LU):
+        # Restart the whole thing, but now using the LU preconditioner (no RL here)
+        # LU is serial and the de-facto standard. Beat this (or at least be on par)
+        # and we win!
+        env = utils.make_env(
+            args,
+            num_envs=num_test_envs,
+            prec='LU',
+            seed=seed,
+        )
+        results_LU = test_model(model, env, ntests, 'LU')
+        plot_results(results_LU, color='r', label='LU')
+
+
+
+    if (args.show_MIN):
+        # Restart the whole thing, but now using the minization preconditioner
+        # (no RL here)
+        # This minimization approach are just magic numbers we found using
+        # indiesolver.com, parallel and proof-of-concept
+        env = utils.make_env(
+            args,
+            num_envs=num_test_envs,
+            prec='min',
+            seed=seed,
+        )
+        results_min = test_model(model, env, ntests, 'MIN')
+        plot_results(results_min, color='g', label='MIN')
+
+    if (args.show_optMIN):
+        # Restart the whole thing, but now using the optimized minization preconditioner
+        # (no RL here)
+        env = utils.make_env(
+            args,
+            num_envs=num_test_envs,
+            prec='optMIN',
+            seed=seed,
+        )
+        results_optmin = test_model(model, env, ntests, 'optMIN')
+        plot_results(results_optmin, color='y', label='optMIN')
+
+
+    if (args.show_trivial0):
+        # Restart the whole thing, but now using the trivial preconditioner (Q_d=0)
+        # (no RL here)
+        env = utils.make_env(
+            args,
+            num_envs=num_test_envs,
+            prec='trivial0',
+            seed=seed,
+        )
+        results_triv0 = test_model(model, env, ntests, 'trivial0')
+        plot_results(results_triv0, color='c', label='trivial0')
+
+    if (args.show_trivial1):
+        # Restart the whole thing, but now using the trivial preconditioner (Q_d=I)
+        # (no RL here)
+        env = utils.make_env(
+            args,
+            num_envs=num_test_envs,
+            prec='trivial1',
+            seed=seed,
+        )
+        results_triv1 = test_model(model, env, ntests, 'trivial1')
+        plot_results(results_triv1, color='m', label='trivial1')
+
+    duration = time.perf_counter() - start_time
+    print(f'Testing took {duration} seconds.')
 
     plt.legend()
 

@@ -302,8 +302,42 @@ def parse_args():
         default=False, #do not change this argument only train_heat and/or run_heat
         help='DO NOT USE!!!',
     )
-
-
+    parser.add_argument(
+        '--run_example',
+        type=int,
+        default=1,
+        help='',
+    )
+    parser.add_argument(
+        '--show_LU',
+        type=utils.parse_bool,
+        default=False,
+        help='',
+    )
+    parser.add_argument(
+        '--show_MIN',
+        type=utils.parse_bool,
+        default=True,
+        help='',
+    )
+    parser.add_argument(
+        '--show_optMIN',
+        type=utils.parse_bool,
+        default=False,
+        help='',
+    )
+    parser.add_argument(
+        '--show_trivial0',
+        type=utils.parse_bool,
+        default=False,
+        help='',
+    )
+    parser.add_argument(
+        '--show_trivial1',
+        type=utils.parse_bool,
+        default=False,
+        help='',
+    )
     args = parser.parse_args()
 
     git_dir = Path(__file__).parent.parent / '.git'

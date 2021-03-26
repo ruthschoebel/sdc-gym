@@ -55,23 +55,21 @@ class Test(ptype):
         f = self.lam * u
         return f
 
-    def solve_system(self, rhs, factor, u0, t):
+    def eval_j(self, u, t=0):
         """
-        Simple linear solver for (I-factor*A)u = rhs
+        Routine to evaluate the RHS
 
         Args:
-            rhs (dtype_f): right-hand side for the linear system
-            factor (float): abbrev. for the local stepsize (or any other factor required)
-            u0 (dtype_u): initial guess for the iterative solver
-            t (float): current time (e.g. for time-dependent BCs)
+            u (dtype_u): current values
+            t (float): current time
 
         Returns:
-            dtype_u: solution as mesh
+            dtype_f: the RHS
         """
-        raise NotImplementedError('ERROR: problem has to implement solve_system(self, u, t)')
 
-        #me = self.dtype_u(self.init)
-        #me.values = spsolve(sp.eye(self.params.nvars, format='csc'), rhs.values)
-        #return me
+
+        return np.eye(u.size)*self.lam
+
+
 
 

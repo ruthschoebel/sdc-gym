@@ -9,8 +9,12 @@ from gym.utils import seeding
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
+import scipy.sparse as sp
+from scipy.sparse.linalg import spsolve
+
 from problem_classes.TestEquation import Test
 from problem_classes.HeatEquation import Heat
+from problem_classes.NonlinearEquation import Flame
 
 import scipy.optimize as opt
 
@@ -47,33 +51,47 @@ class SDC_Full_Env(gym.Env):
             step_penalty=0.1,
             reward_iteration_only=True,
             collect_states=False,
-            run_heat=0, 
+            run_example=0, #0 = TestEquation
             nvars=4,
             dtype=np.float64
     ):
 
-        if(not run_heat):
+        self.coll = CollGaussRadau_Right(M, 0, 1)
+        self.num_nodes = self.coll.num_nodes
+        self.dtype = dtype
+
+        if(run_example==0):
             print("running TEST-Equation")
             self.nvars=1
-        else:
+
+        elif(run_example==1):
             print("running Heat-Equation")
             self.nvars=nvars
+
             print("Heat")
-        self.run_heat=run_heat
-        self.dtype = dtype
+        elif(run_example==2):
+            print("running Fisher")
+            self.nvars=nvars
+
+
+
+        self.run_example=run_example
+
+        self.u0 = None
         self.np_random = None
         self.niter = None
         self.restol = restol
         self.dt = dt
-        self.coll = CollGaussRadau_Right(M, 0, 1)
-        self.num_nodes = self.coll.num_nodes
+
+
         self.Q = self.coll.Qmat[1:, 1:]
         self.C = None
         self.lam = None
-        self.u0 = np.ones(self.num_nodes*self.nvars, dtype=self.dtype)
+
         self.old_res = None
         self.prec = prec
         self.initial_residual = None
+        
 
 
         self.prob = None
@@ -93,21 +111,14 @@ class SDC_Full_Env(gym.Env):
         self.collect_states = collect_states
 
         self.num_episodes = 0
-        # self.rewards = []
-        # self.episode_rewards = []
-        # self.norm_resids = []
-        # Setting the spaces: both are continuous, observation box
-        # artificially bounded by some large numbers
-        # note that because lambda can be complex, U can be complex,
-        # i.e. the observation space should be complex
+
         self.observation_space = spaces.Box(
             low=-1E10,
             high=+1E10,
             shape=(M * 2, 50) if collect_states else (2, M),
             dtype=self.dtype,
         )
-        # I read somewhere that the actions should be scaled to [-1,1],
-        # values will be real.
+
         self.action_space = spaces.Box(
             low=-1.0,
             high=1.0,
@@ -128,8 +139,7 @@ class SDC_Full_Env(gym.Env):
         """Return a preconditioner based on the `scaled_action`.
         `M` is the problem size.
         """
-        # Decide which preconditioner to use
-        # (depending on self.prec string)... not very elegant
+
         if self.prec is None:
             Qdmat = np.zeros_like(self.Q)
             np.fill_diagonal(Qdmat, scaled_action)
@@ -171,11 +181,10 @@ class SDC_Full_Env(gym.Env):
                     0.3716708461097372,
                 ]
             else:
-                # if M is some other number, take zeros. This won't work
-                # well, but does not raise an error
+
                 x = np.zeros(M)
             np.fill_diagonal(Qdmat, x)
-        elif (self.prec == 'optMIN'): #TODO set argument if user wants to see MIN, optimized MIN or both
+        elif (self.prec == 'optMIN'): 
             Qdmat = np.zeros_like(self.Q)
             if M == 3:
                 Qdmat = np.zeros_like(self.Q)
@@ -188,12 +197,10 @@ class SDC_Full_Env(gym.Env):
                     return max(abs(np.linalg.eigvals(self.lam   *   np.linalg.inv( np.eye(self.num_nodes)    -  self.lam *  np.diag([x[i] for i in range(self.num_nodes)])   ).dot(self.Q    -   np.diag([x[i] for i in range(self.num_nodes)]))    )                   ))
                 x = opt.minimize(rho, x0, method='Nelder-Mead').x       
             else:
-                # if M is some other number, take zeros. This won't work
-                # well, but does not raise an error
+
                 x = np.zeros(M)
-            #print("optMIN prec")
             np.fill_diagonal(Qdmat, x)
-        elif (self.prec == 'trivial'): #TODO set argument if user wants to see MIN, optimized MIN or both
+        elif (self.prec == 'trivial'): 
             Qdmat = np.zeros_like(self.Q)
             if M == 3:
                 Qdmat = np.zeros_like(self.Q)
@@ -211,11 +218,10 @@ class SDC_Full_Env(gym.Env):
 
         u, old_residual = self.state
 
-        # I read somewhere that the actions should be scaled to [-1,1],
-        # scale it back to [0,1] here...
+
         scaled_action = np.interp(action, (-1, 1), (0, 1))
 
-        # Get Q_delta, based on self.prec (and/or scaled_action)
+
         Qdmat = self._get_prec(scaled_action=scaled_action, M=u.size)
 
         # Precompute the inverse of P
@@ -279,10 +285,7 @@ class SDC_Full_Env(gym.Env):
 
     def reset(self):
         self.num_episodes += 1
-        # Draw a lambda (here: negative real for starters)
-        # The number of episodes is always smaller than the number of
-        # time steps, keep that in mind for the interpolation
-        # hyperparameters.
+
         if self.lambda_real_interpolation_interval is not None:
             lam_low = np.interp(self.num_episodes,
                                 self.lambda_real_interpolation_interval,
@@ -310,31 +313,49 @@ class SDC_Full_Env(gym.Env):
         # This comes as read-in for the problem class
         #problem_params = dict()
         problem_params = {}
-        if (not self.run_heat): # run Test
+
+        if (self.run_example==0): #test
             problem_params['lam'] = self.lam
             problem_params['nvars'] = self.nvars
             problem_class = Test
             dtype=self.dtype
+            self.prob = problem_class(problem_params, dtype_u=dtype, dtype_f=dtype) 
+            self.u0 = np.ones(self.num_nodes*self.nvars, dtype=self.dtype)
+            u = np.ones(self.num_nodes*self.nvars, dtype=self.dtype)
             #dtype=mesh
-        else: # run Heat
+        elif(self.run_example==1): # run Heat
             problem_params['lam'] = self.lam
             problem_params['nvars'] = self.nvars
             problem_class = Heat
             dtype=self.dtype
+            self.prob = problem_class(problem_params, dtype_u=dtype, dtype_f=dtype, t=self.coll.nodes) 
+            self.u0 = self.prob.u_exact(self.coll.nodes*0)
+            u = self.prob.u_exact(self.coll.nodes*0)
 
-        self.prob = problem_class(problem_params, dtype_u=dtype, dtype_f=dtype) 
+        elif(self.run_example==2): # run Heat
+            problem_params['lam'] = self.lam
+            problem_params['nvars'] = self.nvars
+            problem_class = Flame
+            dtype=self.dtype
+            self.prob = problem_class(problem_params, dtype_u=dtype, dtype_f=dtype, t=self.coll.nodes) 
+            self.u0 = self.prob.u_exact(self.coll.nodes*0) 
+            u = np.ones(self.num_nodes*self.nvars, dtype=self.dtype)
+
+
 
 
         self.rhs_mat = self.prob.rhs_mat
 
 
         # Compute the system matrix 
-        self.C = np.eye(self.num_nodes*self.nvars) - self.dt * np.kron(self.Q, self.rhs_mat)
+        self.C = np.eye(self.num_nodes*self.nvars) - self.dt * np.kron(self.Q, self.rhs_mat) 
+
 
         # Initial guess u^0 and initial residual for the state
-        u = np.ones(self.num_nodes*self.nvars, dtype=self.dtype)
 
-        residual = np.squeeze(np.array(self.u0.flatten() - self.C @ u.flatten() ))
+        Cu     = u - self.dt * np.kron(self.Q, np.eye(self.nvars)) @ self.prob.eval_f(u)  
+
+        residual = np.squeeze(np.array(self.u0.flatten() - Cu.flatten() )) 
         self.initial_residual = residual
 
 
@@ -345,9 +366,7 @@ class SDC_Full_Env(gym.Env):
 
         self.state = (u, residual)  
         if self.collect_states:
-            # Try if this works instead of the line below it.
-            # I didn't use it for safety, but it's a bit faster.
-            # self.old_states[:] = 0
+
             self.old_states = np.zeros((self.num_nodes * 2, 50), dtype=self.dtype)
             self.old_states[:, 0] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ) )
 
@@ -423,61 +442,79 @@ class SDC_Step_Env(SDC_Full_Env):
         (b) more than 50 iterations are done (not converged),
         (c) diverged.
     """
+    def solve_system(self, u,  rhs, Qdmat):
+
+        Id = sp.eye(self.num_nodes*self.nvars)
+        n=1
+        while n < 5:
+
+            #TODO: check if problem has boundary conditions
+            #TODO: node perspective is more efficient for solve
+            g = np.squeeze(np.array(u.flatten()  - self.dt * np.kron(Qdmat, np.eye(self.nvars)) @ self.prob.eval_f(u, 0.0)   - rhs.flatten() ))
+            
+
+
+            res = np.linalg.norm(g, np.inf)
+
+            if res < 1e-15:
+                break
+
+            dg = Id - self.dt * np.kron(Qdmat, np.eye(self.nvars)) @   self.prob.eval_j(u, 0.0)
+
+
+
+            du = spsolve(dg, g)
+            u -= du 
+            n += 1
+
+        return u #np.squeeze(np.array(u.flatten() +    Pinv @ old_residual.flatten()  ))
 
     def step(self, action):
 
         u, old_residual = self.state
 
-        # I read somewhere that the actions should be scaled to [-1,1],
-        # scale it back to [0,1] here...
+ 
         scaled_action = np.interp(action, (-1, 1), (0, 1))
 
-        # Get Q_delta, based on self.prec (and/or scaled_action)
+
         Qdmat = self._get_prec(scaled_action=scaled_action, M=self.num_nodes)
 
-        # Compute the inverse of P
-        Pinv = np.linalg.inv(
-            np.eye(self.num_nodes*self.nvars) - self.dt * np.kron(Qdmat, self.rhs_mat),
-        )
 
 
-        # Do the iteration (note that we already have the residual)
 
-        u =  np.squeeze(np.array(u.flatten() +    Pinv @ old_residual.flatten()  ))  #TODO clean this up and use better data-structures from pySDC
+        rhs  = np.squeeze( np.array(             u.flatten()  - self.dt * np.kron(Qdmat, np.eye(self.nvars)) @ self.prob.eval_f(u) + old_residual.flatten()                        )) 
+
+        u = self.solve_system( u, rhs, Qdmat)   #TODO clean this up and use better data-structures from pySDC
+
+
         #u += Pinv @ old_residual
 
         # The new residual and its norm
-        residual = np.squeeze(np.array(self.u0.flatten() - self.C @ u.flatten() ))
+        Cu     =  u - self.dt * np.kron(self.Q, np.eye(self.nvars)) @ self.prob.eval_f(u, 0.0)  #u.flatten() 
+
+        residual = np.squeeze(np.array(self.u0.flatten() - Cu.flatten() ))
 
         norm_res = np.linalg.norm(residual, np.inf)
+
         norm_res_old = np.linalg.norm(old_residual, np.inf)
 
         self.niter += 1
 
         # Check if something went wrong
         err = np.isnan(norm_res) or np.isinf(norm_res)
-        # so far this seems to be the best setup:
-        #   - stop if residual gets larger than the initial one
-        #     (not needed, but faster)
-        #   - reward = -50, if this happens (crucial!)
+
         err = err or norm_res > norm_res_old * 100
-        # Stop iterating when converged, when iteration count is
-        # too high or when something bad happened
+
         done = norm_res < self.restol or self.niter >= 50 or err
+
 
         if not err:
             reward = self.reward_func(old_residual, residual, self.niter)
-            # print(reward)
-        else:
-            # return overall reward of -51
-            # (slightly worse than -50 in the "not converged" scenario)
-            # reward = -self.step_penalty * (52 - self.niter)
-            reward = -self.step_penalty * 51
-            # reward = -51 + self.niter
-            # reward = -50 + self.niter
 
-        # self.episode_rewards.append(reward)
-        # self.norm_resids.append(norm_res)
+        else:
+
+            reward = -self.step_penalty * 51
+
 
 
         _u   = u.reshape(self.num_nodes, self.nvars)
