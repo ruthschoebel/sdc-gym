@@ -21,7 +21,7 @@ def parse_args():
         help=(
             '"Difficulty" of the problem '
             '(proportionally relates to nth-order differential equation)'
-            '(choose M = 3, 4, 5, 7 for comparing MIN-preconditioner)'
+            '(choose M = 3 or M = 5 for comparing MIN-preconditioner)'
         ),
     )
     parser.add_argument(
@@ -91,7 +91,7 @@ def parse_args():
         '--learning_rate',
         type=float,
         # default for PPO2 in stable-baselines
-        default=0.002,
+        default=25E-05,
         help='Learning rate/step size of the model.',
     )
     parser.add_argument(
@@ -99,8 +99,29 @@ def parse_args():
         type=utils.parse_bool,
         default=True,
         help=(
-            'Whether to rescale the learning rate by the number'
+            'Whether to rescale the learning rate by the number '
             'of environments.'
+        ),
+    )
+    parser.add_argument(
+        '--end_lr',
+        type=float,
+        default=None,
+        help=(
+            'Whether to linearly interpolate the learning rate by the '
+            'amount of training progress remaining. '
+            '`--end_lr_frac` controls at which fractional amount of '
+            'completed progress this is reached. '
+            'By default, do not use learning rate scheduling.'
+        ),
+    )
+    parser.add_argument(
+        '--end_lr_frac',
+        type=float,
+        default=1.0,
+        help=(
+            'Controls at which fractional amount of completed progress '
+            '`--end_lr` is reached. No effect if `--end_lr None`.'
         ),
     )
     parser.add_argument(
@@ -116,13 +137,13 @@ def parse_args():
     parser.add_argument(
         '--model_class',
         type=str,
-        default='PPG',
+        default='PPO2',
         help='Class of model to instantiate.',
     )
     parser.add_argument(
         '--model_kwargs',
         type=utils.parse_dict,
-        default={"batch_size": 512, "aux_batch_size": 256},
+        default={},
         help=(
             'Keyword arguments for model creation. '
             'See the documentation for details. '
@@ -284,6 +305,7 @@ def parse_args():
         default=False,
         help='Whether to enable NaN debugging.',
     )
+
     parser.add_argument(
         '--train_heat',
         type=utils.parse_bool,
@@ -338,6 +360,7 @@ def parse_args():
         default=False,
         help='',
     )
+
     args = parser.parse_args()
 
     git_dir = Path(__file__).parent.parent / '.git'

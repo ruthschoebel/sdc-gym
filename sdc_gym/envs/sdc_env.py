@@ -1,5 +1,4 @@
 
-
 import itertools
 import math
 
@@ -22,7 +21,6 @@ from pySDC.implementations.problem_classes.HeatEquation_2D_FD_periodic import he
 
 from pySDC.implementations.datatype_classes.mesh import mesh
 
-from pySDC.implementations.collocation_classes.gauss_radau_right import CollGaussRadau_Right
 
 
 class SDC_Full_Env(gym.Env):
@@ -53,7 +51,8 @@ class SDC_Full_Env(gym.Env):
             collect_states=False,
             run_example=0, #0 = TestEquation
             nvars=4,
-            dtype=np.float64
+            dtype=np.float64,
+            use_doubles=True
     ):
 
         self.coll = CollGaussRadau_Right(M, 0, 1)
@@ -67,6 +66,7 @@ class SDC_Full_Env(gym.Env):
         elif(run_example==1):
             print("running Heat-Equation")
             self.nvars=nvars
+
 
             print("Heat")
         elif(run_example==2):
@@ -90,12 +90,12 @@ class SDC_Full_Env(gym.Env):
 
         self.old_res = None
         self.prec = prec
-        self.initial_residual = None
-        
+        self.initial_residual = None        
 
 
         self.prob = None
         self.rhs_mat = None
+
 
         self.lambda_real_interval = lambda_real_interval
         self.lambda_real_interval_reversed = list(
@@ -123,13 +123,14 @@ class SDC_Full_Env(gym.Env):
             low=-1.0,
             high=1.0,
             shape=(M,),
-            dtype=np.float64,
+            dtype=np.float64 if use_doubles else np.float32,
         )
 
         self.seed(seed)
         self.state = None
         if collect_states:
             self.old_states = np.zeros((M * 2, 50), dtype=self.dtype)
+
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -238,6 +239,7 @@ class SDC_Full_Env(gym.Env):
             self.niter += 1
 
             u =  np.squeeze(np.array(u.flatten() +    Pinv @ (self.u0.flatten() - np.squeeze(np.array(self.C @ u)))) )  #TODO clean this up and use better data-structures from pySDC
+
             # Compute the residual and its norm
             residual = self.u0 - self.C @ u
             norm_res = np.linalg.norm(residual, np.inf)
@@ -247,11 +249,13 @@ class SDC_Full_Env(gym.Env):
             #   - stop if residual gets larger than the initial one
             #     (not needed, but faster)
             #   - reward = -50, if this happens (crucial!)
+
             _u   = u.reshape(self.num_nodes, self.nvars)
             _res = residual.reshape(self.num_nodes, self.nvars)
 
             if self.collect_states and self.niter < 50:
                 self.old_states[:, self.niter] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ) )
+
             err = err or norm_res > norm_res_old * 100
             if err:
                 reward = -self.step_penalty * 51
@@ -281,10 +285,12 @@ class SDC_Full_Env(gym.Env):
         if self.collect_states:
             return (self.old_states, reward, done, info)
         else:
+
             return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)
 
     def reset(self):
         self.num_episodes += 1
+
 
         if self.lambda_real_interpolation_interval is not None:
             lam_low = np.interp(self.num_episodes,
@@ -292,6 +298,7 @@ class SDC_Full_Env(gym.Env):
                                 self.lambda_real_interval_reversed)
         else:
             lam_low = self.lambda_real_interval[0]
+
 
         if (self.dtype==np.float64): #falls float Datentyp keine komplexen lambda
             self.lam = (
@@ -351,7 +358,8 @@ class SDC_Full_Env(gym.Env):
         self.C = np.eye(self.num_nodes*self.nvars) - self.dt * np.kron(self.Q, self.rhs_mat) 
 
 
-        # Initial guess u^0 and initial residual for the state
+
+
 
         Cu     = u - self.dt * np.kron(self.Q, np.eye(self.nvars)) @ self.prob.eval_f(u)  
 
@@ -370,6 +378,7 @@ class SDC_Full_Env(gym.Env):
             self.old_states = np.zeros((self.num_nodes * 2, 50), dtype=self.dtype)
             self.old_states[:, 0] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ) )
 
+
         # self.rewards.append(self.episode_rewards)
         # self.episode_rewards = []
         self.niter = 0
@@ -377,7 +386,9 @@ class SDC_Full_Env(gym.Env):
         if self.collect_states:
             return self.old_states
         else:
+
             return (np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ) 
+
 
     def reward_func(self, old_residual, residual, steps=1):
         """Return the reward obtained with the `old_residual` with the
@@ -482,6 +493,7 @@ class SDC_Step_Env(SDC_Full_Env):
 
 
 
+
         rhs  = np.squeeze( np.array(             u.flatten()  - self.dt * np.kron(Qdmat, np.eye(self.nvars)) @ self.prob.eval_f(u) + old_residual.flatten()                        )) 
 
         u = self.solve_system( u, rhs, Qdmat)   #TODO clean this up and use better data-structures from pySDC
@@ -494,7 +506,9 @@ class SDC_Step_Env(SDC_Full_Env):
 
         residual = np.squeeze(np.array(self.u0.flatten() - Cu.flatten() ))
 
+
         norm_res = np.linalg.norm(residual, np.inf)
+        norm_res_old = np.linalg.norm(old_residual, np.inf)
 
         norm_res_old = np.linalg.norm(old_residual, np.inf)
 
@@ -503,13 +517,16 @@ class SDC_Step_Env(SDC_Full_Env):
         # Check if something went wrong
         err = np.isnan(norm_res) or np.isinf(norm_res)
 
+
         err = err or norm_res > norm_res_old * 100
+
 
         done = norm_res < self.restol or self.niter >= 50 or err
 
 
         if not err:
             reward = self.reward_func(old_residual, residual, self.niter)
+
 
         else:
 
@@ -525,6 +542,7 @@ class SDC_Step_Env(SDC_Full_Env):
         if self.collect_states and self.niter < 50:
             self.old_states[:, self.niter] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ))
 
+
         info = {
             'residual': norm_res,
             'niter': self.niter,
@@ -533,6 +551,7 @@ class SDC_Step_Env(SDC_Full_Env):
         if self.collect_states:
             return (self.old_states, reward, done, info)
         else:
+
             return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)
 
 

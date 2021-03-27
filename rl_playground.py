@@ -1,4 +1,6 @@
+
 #python rl_playground.py --envname sdc-v1 --num_envs 8 --model_class PPG --activation_fn ReLU --collect_states True --reward_iteration_only False --norm_obs True --tests 100 --steps 1000 --train_heat False --test_heat True
+
 
 import datetime
 import json
@@ -96,18 +98,21 @@ def test_model(model, env, ntests, name, stats_path=None):
     mean_niter = 0
     nsucc = 0
     results = []
-    stats = {
-        key: []
-        for key in [
-                'obs',
-                'action',
-                'reward',
-                'niter',
-                'lam',
-                'residual',
-                'terminal_observation',
-        ]
-    }
+
+    if stats_path is not None:
+        stats = {
+            key: []
+            for key in [
+                    'obs',
+                    'action',
+                    'reward',
+                    'niter',
+                    'lam',
+                    'residual',
+                    'terminal_observation',
+            ]
+        }
+
 
     num_envs = env.num_envs
     # Amount of test that will be ran in total
@@ -179,6 +184,8 @@ def plot_results(results, color, label):
     )
 
 
+
+
 def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True):
     """Run tests for the given `model` and `args`, using `seed` as the
     random seed.
@@ -196,6 +203,12 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
     num_test_envs = args.num_envs \
         if not args.use_sb3 and model.policy.recurrent else 1
 
+    #fig_path = Path(f'results_{script_start}.pdf')
+    #args.run_heat=False
+    #if (args.test_heat):
+    #    args.run_heat=True #Test with HeatEquation else test with TestEquation
+    #run_tests(model, args, seed=eval_seed, fig_path=fig_path) 
+
     ntests = int(args.tests)
     ntests = utils.maybe_fix_ntests(ntests, num_test_envs)
 
@@ -206,7 +219,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
     plt.ylabel('iterations')
 
     # Test the trained model.
-    env = utils.make_env(args, num_envs=num_test_envs, seed=seed)
+    env = utils.make_env(args, num_envs=num_test_envs, seed=seed  ,      lambda_real_interpolation_interval=None)
     results_RL = test_model( model, env, ntests, 'RL', stats_path=stats_path)
     plot_results(results_RL, color='b', label='RL')
 
@@ -220,6 +233,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
             num_envs=num_test_envs,
             prec='LU',
             seed=seed,
+            lambda_real_interpolation_interval=None,
         )
         results_LU = test_model(model, env, ntests, 'LU')
         plot_results(results_LU, color='r', label='LU')
@@ -236,6 +250,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
             num_envs=num_test_envs,
             prec='min',
             seed=seed,
+            lambda_real_interpolation_interval=None,
         )
         results_min = test_model(model, env, ntests, 'MIN')
         plot_results(results_min, color='g', label='MIN')
@@ -248,6 +263,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
             num_envs=num_test_envs,
             prec='optMIN',
             seed=seed,
+            lambda_real_interpolation_interval=None,
         )
         results_optmin = test_model(model, env, ntests, 'optMIN')
         plot_results(results_optmin, color='y', label='optMIN')
@@ -261,6 +277,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
             num_envs=num_test_envs,
             prec='trivial0',
             seed=seed,
+            lambda_real_interpolation_interval=None,
         )
         results_triv0 = test_model(model, env, ntests, 'trivial0')
         plot_results(results_triv0, color='c', label='trivial0')
@@ -273,6 +290,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
             num_envs=num_test_envs,
             prec='trivial1',
             seed=seed,
+            lambda_real_interpolation_interval=None,
         )
         results_triv1 = test_model(model, env, ntests, 'trivial1')
         plot_results(results_triv1, color='m', label='trivial1')
@@ -343,6 +361,11 @@ def main():
     # delete trained model to demonstrate loading, not really necessary
     # del model
 
+
+
+    # delete trained model to demonstrate loading, not really necessary
+    # del model
+
     # ---------------- TESTING STARTS HERE ----------------
 
     fig_path = Path(f'results_{script_start}.pdf')
@@ -350,6 +373,10 @@ def main():
     if (args.test_heat):
         args.run_heat=True #Test with HeatEquation else test with TestEquation
     run_tests(model, args, seed=eval_seed, fig_path=fig_path) 
+
+
+    #fig_path = Path(f'results_{script_start}.pdf')
+    #run_tests(model, args, seed=eval_seed, fig_path=fig_path)
 
 
 if __name__ == '__main__':
