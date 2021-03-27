@@ -21,7 +21,7 @@ from pySDC.implementations.problem_classes.HeatEquation_2D_FD_periodic import he
 
 from pySDC.implementations.datatype_classes.mesh import mesh
 
-
+from pySDC.implementations.collocation_classes.gauss_radau_right import CollGaussRadau_Right
 
 class SDC_Full_Env(gym.Env):
     """This environment implements a full iteration of SDC, i.e. for
