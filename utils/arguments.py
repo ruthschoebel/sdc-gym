@@ -73,7 +73,7 @@ def parse_args():
         '--envname',
         type=str,
         default='sdc-v0',
-        choices=['sdc-v0', 'sdc-v1'],
+        choices=['sdc-v0', 'sdc-v1', 'sdc-v2'],
         help=(
             'Gym environment to use;\n    sdc-v0 – SDC with a full iteration '
             'per step (no intermediate observations),\n    sdc-v1 – SDC with '
