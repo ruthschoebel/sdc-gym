@@ -69,8 +69,9 @@ def dry_run(model, env, nsteps):
         obs = env.reset()
         done = [False for _ in range(num_envs)]
         if env.envs[0].prec is not None:
-            action = np.empty(env.action_space.shape,
-                              dtype=env.action_space.dtype)
+            action = [np.empty(env.action_space.shape,
+                               dtype=env.action_space.dtype)
+                      for _ in range(num_envs)]
 
         while not all(done):
             # Do not predict an action when we would discard it anyway
@@ -123,8 +124,9 @@ def test_model(model, env, ntests, name, stats_path=None):
         obs = env.reset()
         done = [False for _ in range(num_envs)]
         if env.envs[0].prec is not None:
-            action = np.empty(env.action_space.shape,
-                              dtype=env.action_space.dtype)
+            action = [np.empty(env.action_space.shape,
+                               dtype=env.action_space.dtype)
+                      for _ in range(num_envs)]
 
         while not all(done):
             if stats_path is not None:
@@ -340,6 +342,8 @@ def main():
 
     dry_run(model, env, int(args.warmup_steps))
     env.seed(args.seed)
+    for env_ in env.envs:
+        env_.set_num_episodes(args.start_episodes)
 
     start_time = time.perf_counter()
     # Train the model (need to put at least 100k steps to

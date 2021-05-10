@@ -68,12 +68,21 @@ def parse_args():
             'By default, do not resize.'
         ),
     )
+    parser.add_argument(
+        '--start_episodes',
+        type=int,
+        default=0,
+        help=(
+            'Number of episodes to set in each environment at the '
+            'start (after warmup). '
+            'Useful for `--lambda_real_interpolation_interval`.'
+        ),
+    )
 
     parser.add_argument(
         '--envname',
         type=str,
         default='sdc-v0',
-        choices=['sdc-v0', 'sdc-v1', 'sdc-v2'],
         help=(
             'Gym environment to use;\n    sdc-v0 – SDC with a full iteration '
             'per step (no intermediate observations),\n    sdc-v1 – SDC with '
@@ -205,6 +214,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        '--reward_strategy',
+        type=str,
+        default='iteration_only',
+        help=(
+            'How to reward the agent. '
+            'For choices, see the respective environments.'
+        ),
+    )
+    parser.add_argument(
         '--collect_states',
         type=utils.parse_bool,
         default=False,
@@ -214,7 +232,7 @@ def parse_args():
     parser.add_argument(
         '--tests',
         type=float,
-        default=5000,
+        default=100,
         help='Number of test runs for each preconditioning method.',
     )
     parser.add_argument(
@@ -222,6 +240,12 @@ def parse_args():
         type=int,
         default=4,
         help='How many environments to use in parallel.',
+    )
+    parser.add_argument(
+        '--example',
+        type=int,
+        default=0,
+        help='0 for test equation, 1 for heat equation',
     )
     parser.add_argument(
         '--seed',
@@ -304,61 +328,6 @@ def parse_args():
         type=utils.parse_bool,
         default=False,
         help='Whether to enable NaN debugging.',
-    )
-
-    parser.add_argument(
-        '--train_heat',
-        type=utils.parse_bool,
-        default=False,
-        help='Whether to train with HeatEquation, just for debug reasons, model normally only trains with TestEquation.',
-    )
-    parser.add_argument(
-        '--test_heat',
-        type=utils.parse_bool,
-        default=False,
-        help='Whether to test HeatEquation after training.',
-    )
-    parser.add_argument( #TODO fix this in utils.py
-        '--run_heat',
-        type=utils.parse_bool,
-        default=False, #do not change this argument only train_heat and/or run_heat
-        help='DO NOT USE!!!',
-    )
-    parser.add_argument(
-        '--run_example',
-        type=int,
-        default=1,
-        help='',
-    )
-    parser.add_argument(
-        '--show_LU',
-        type=utils.parse_bool,
-        default=False,
-        help='',
-    )
-    parser.add_argument(
-        '--show_MIN',
-        type=utils.parse_bool,
-        default=True,
-        help='',
-    )
-    parser.add_argument(
-        '--show_optMIN',
-        type=utils.parse_bool,
-        default=False,
-        help='',
-    )
-    parser.add_argument(
-        '--show_trivial0',
-        type=utils.parse_bool,
-        default=False,
-        help='',
-    )
-    parser.add_argument(
-        '--show_trivial1',
-        type=utils.parse_bool,
-        default=False,
-        help='',
     )
 
     args = parser.parse_args()

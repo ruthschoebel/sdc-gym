@@ -41,8 +41,8 @@ class Heat(ptype):
         self.A *= self.nu
         self.rhs_mat = self.A 
 
-        self.exact = self.u_exact(t)
-
+        self.u0 = self.u_exact(t*0)
+        self.M= len(t)
 
 
     def __get_A(self, N, dx):
@@ -63,7 +63,20 @@ class Heat(ptype):
         A *= 1. / (dx ** 2)
         return A.todense()
 
+    def return_j(self, t=0):
+        """
+        Routine to evaluate the RHS
 
+        Args:
+            u (dtype_u): current values
+            t (float): current time
+
+        Returns:
+            dtype_f: the RHS
+        """
+
+
+        return np.kron(  np.eye(self.M)   , self.A) 
 
     def eval_f(self, u, t=0):
         """
@@ -76,8 +89,9 @@ class Heat(ptype):
         Returns:
             dtype_f: the RHS
         """
-        n = u.size / self.nvars
-        return np.squeeze( np.array(    np.kron(np.eye(int(n))   , self.A) @ u.flatten() ))
+        #n = u.size / self.nvars
+
+        return np.squeeze( np.array(    np.kron(np.eye(self.M)   , self.A) @ u.flatten() ))
 
     def eval_j(self, u, t=0):
         """
@@ -90,8 +104,8 @@ class Heat(ptype):
         Returns:
             dtype_f: the RHS
         """
-        n = u.size / self.nvars
-        return np.kron(  np.eye(int(n))   , self.A) 
+        #n = u.size / self.nvars
+        return np.kron(  np.eye(self.M)   , self.A) 
 
 
 

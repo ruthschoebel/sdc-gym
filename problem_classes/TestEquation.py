@@ -14,7 +14,7 @@ class Test(ptype):
         lambda
     """
 
-    def __init__(self, problem_params, dtype_u, dtype_f):
+    def __init__(self, problem_params, dtype_u, dtype_f, t):
         """
         Initialization routine
 
@@ -37,7 +37,8 @@ class Test(ptype):
 
         self.lam = self.params.lam
         self.rhs_mat = self.lam 
-
+        self.u0 = np.ones(len(t), dtype=dtype_u)
+        self.M= len(t)
 
     def eval_f(self, u, t=0):
         """
@@ -51,9 +52,24 @@ class Test(ptype):
             dtype_f: the RHS
         """
 
-
+        #print(self.lam, u)
         f = self.lam * u
         return f
+
+    def return_j(self, t=0):
+        """
+        Routine to evaluate the RHS
+
+        Args:
+            u (dtype_u): current values
+            t (float): current time
+
+        Returns:
+            dtype_f: the RHS
+        """
+
+
+        return np.eye(self.M)*self.lam
 
     def eval_j(self, u, t=0):
         """

@@ -29,16 +29,13 @@ def setup(using_sb3, debugging_nans=False):
         import stable_baselines3 as stable_baselines
         import torch.nn as act_fns
 
-
         import utils.sb3_activations as my_act_fns
-
         if debug_nans:
             import torch
             torch.autograd.set_detect_anomaly(True)
     else:
         from stable_baselines.common.callbacks import CheckpointCallback, \
             EvalCallback
-
         from stable_baselines.common.schedules import LinearSchedule
         from stable_baselines.common.vec_env import DummyVecEnv, \
             VecCheckNan, VecNormalize
@@ -88,9 +85,7 @@ def _json_fix_string(string, ex):
 
     shape_string = json_err_char_to_handler[err_char]
     string = shape_string(string, err_pos)
-
     return string
-
 
 
 def parse_dict(string):
@@ -176,7 +171,6 @@ def get_activation_fn(activation_fn_str):
     try:
         activation_fn = getattr(act_fns, activation_fn_str)
     except AttributeError:
-
         try:
             activation_fn = getattr(my_act_fns, activation_fn_str)
         except KeyError:
@@ -188,7 +182,6 @@ def get_activation_fn(activation_fn_str):
             else:
                 err_string = f'{err_string}`tensorflow.nn`'
             raise AttributeError(f'{err_string}')
-
     return activation_fn
 
 
@@ -196,7 +189,6 @@ def compute_learning_rate(args):
     learning_rate = args.learning_rate
     if args.rescale_lr:
         learning_rate *= args.num_envs
-
 
     if not hasattr(args, 'end_lr') or args.end_lr is None:
         return learning_rate
@@ -211,14 +203,12 @@ def compute_learning_rate(args):
         end_lr_frac_steps = args.steps * args.end_lr_frac
         learning_rate = LinearSchedule(
             end_lr_frac_steps, end_lr, learning_rate)
-
     return learning_rate
 
 
 def maybe_fix_ntests(ntests_given, num_test_envs):
     """Return `ntests_given` approximately scaled to a vectorized environment
     with `num_test_envs` parallel environments.
-
     Print a warning if the rescaling does not result in the same number of
     test runs.
     """
@@ -250,7 +240,6 @@ def make_env(
 ):
     """Return a vectorized environment containing `num_envs` or `args.num_envs`
     environments (depending on whether `num_envs is None`).
-
     `args`, the command line arguments, specify several values. See `kwargs`
     for a more detailed explanation on their interaction.
     `include_norm` specifies whether the environment is wrapped in a
@@ -278,31 +267,29 @@ def make_env(
             'residual_weight',
             'step_penalty',
             'reward_iteration_only',
+            'reward_strategy',
             'collect_states',
 
-            #'train_heat',
-            #'test_heat',
-            #'run_heat'
-            'run_example'
-
+            'example',
     ]:
         args_kwargs[arg] = kwargs.pop(arg, getattr(args, arg))
     all_kwargs = {**kwargs, **args_kwargs}
-
 
     # SAC does not support float64
     if args.model_class == 'SAC':
         all_kwargs['use_doubles'] = False
 
-
     seed = all_kwargs.pop('seed', args.seed)
 
-    env = DummyVecEnv([
-        lambda: gym.make(
+    def gym_make(i):
+        return lambda: gym.make(
             args.envname,
             seed=seed + i if seed is not None else None,
             **all_kwargs,
         )
+
+    env = DummyVecEnv([
+        gym_make(i)
         for i in range(num_envs)
     ])
     if include_norm:
@@ -405,7 +392,6 @@ def maybe_fix_nminibatches(model_kwargs, args, policy_class):
     """Set the `nminibatches` parameter in `model_kwargs` to
     `args.num_envs` if the value would cause problems otherwise with the
     given `policy_class`.
-
     Print a warning as well if the value had to be changed.
     Only affects the `PPO2` model.
     """
