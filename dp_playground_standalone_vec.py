@@ -100,6 +100,13 @@ def parse_args():
         help='Base random number seed.',
     )
 
+    parser.add_argument(
+        '--example',
+        type=int,
+        default=0,
+        help='',
+    )
+
     args = parser.parse_args()
     args.envname = 'jax-sdc-v2'
 

@@ -28,8 +28,8 @@ class Test(ptype):
                 msg = 'need %s to instantiate problem, only got %s' % (key, str(problem_params.keys()))
                 raise ParameterError(msg)
 
-        if problem_params['nvars'] != 1:
-            raise ProblemError('nvars for TestEquation should be 1!')
+        #if problem_params['nvars'] != 1:
+        #    raise ProblemError('nvars for TestEquation should be 1!')
 
 
         # invoke super init, passing number of dofs, dtype_u and dtype_f

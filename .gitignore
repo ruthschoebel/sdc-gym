@@ -137,3 +137,4 @@ dmypy.json
 *.npy
 *.npz
 *.pt
+*.npy*

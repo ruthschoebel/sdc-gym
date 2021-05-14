@@ -178,11 +178,13 @@ def test_model(model, env, ntests, name, stats_path=None):
 
 def plot_results(results, color, label):
     sorted_results = sorted(results, key=lambda x: x[0])
+    #plt.xscale('log')
     plt.plot(
         [i[0] for i in sorted_results],
         [i[1] for i in sorted_results],
         color=color,
         label=label,
+        linestyle='--', marker='o'
     )
 
 
@@ -300,7 +302,7 @@ def run_tests(model, args, seed=None, fig_path=None, stats_path=None, heat=True)
     duration = time.perf_counter() - start_time
     print(f'Testing took {duration} seconds.')
 
-    plt.legend()
+    #plt.legend()
 
     if fig_path is not None:
         plt.savefig(fig_path, bbox_inches='tight')

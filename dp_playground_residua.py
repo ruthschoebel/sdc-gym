@@ -187,6 +187,13 @@ def parse_args():
         help='Base random number seed.',
     )
 
+    parser.add_argument(
+        '--example',
+        type=int,
+        default=0,
+        help='Base random number seed.',
+    )
+
     args = parser.parse_args()
     args.envname = 'sdc-v0'
 
@@ -283,7 +290,7 @@ def test_model(model, params, env, ntests, name,
 
     for i in range(ntests):
         env.reset()
-        obs = jnp.stack([env_.initial_residual for env_ in env.envs])
+        obs = jnp.stack([env_.initial_residual_time for env_ in env.envs])
         done = [False for _ in range(num_envs)]
         if env.envs[0].prec is not None:
             action = [np.empty(env.action_space.shape,
@@ -303,7 +310,7 @@ def test_model(model, params, env, ntests, name,
                 action = np.array(action)
 
             _, rewards, done, info = env.step(action)
-            obs = jnp.stack([env_.initial_residual for env_ in env.envs])
+            obs = jnp.stack([env_.initial_residual_time for env_ in env.envs])
 
             if stats_path is not None:
                 stats['action'].append(action)

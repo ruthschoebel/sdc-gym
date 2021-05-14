@@ -11,7 +11,7 @@ import scipy
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
 
-
+from scipy.sparse import identity
 
 
 
@@ -35,6 +35,7 @@ class SDC_Full_Env(gym.Env):
     num_envs = 1
     max_iters = 50
 
+
     def __init__(
             self,
             M=None,
@@ -53,9 +54,11 @@ class SDC_Full_Env(gym.Env):
             collect_states=False,
             use_doubles=True,
             do_scale=True,
-            example=0, #0 = TestEquation
-            nvars=4,
-            dtype=np.complex128 #np.float64,
+            example=1, #0 = TestEquation
+            nvars=1000,
+            dtype=np.complex128, #np.float64,
+            model=None,
+            params=None
     ):
 
         self.np_random = None
@@ -72,7 +75,7 @@ class SDC_Full_Env(gym.Env):
         self.old_res = None
         self.prec = prec
         self.initial_residual = None
-
+        self.initial_residual_time = None
 
         if(example==0):
             print("running TEST-Equation")
@@ -81,6 +84,11 @@ class SDC_Full_Env(gym.Env):
         elif(example==1):
             print("running Heat-Equation")
             self.nvars=nvars
+
+
+
+        self.model=model
+        self.params=params
         self.example=example
         self.dtype=np.complex128
         self.prob= None
@@ -101,7 +109,7 @@ class SDC_Full_Env(gym.Env):
             self.reward_strategy = 'iteration_only'
         else:
             self.reward_strategy = 'residual_change'
-        self.collect_states = collect_states
+        self.collect_states = False #collect_states
         self.do_scale = do_scale
 
         self.num_episodes = 0
@@ -115,7 +123,7 @@ class SDC_Full_Env(gym.Env):
         self.observation_space = spaces.Box(
             low=-1E10,
             high=+1E10,
-            shape=(M * nvars * 2, self.max_iters) if collect_states else (2, M * nvars),
+            shape=(M * self.nvars * 2, self.max_iters) if collect_states else (2, M * self.nvars),
             dtype=np.complex128,
         )
         # I read somewhere that the actions should be scaled to [-1,1],
@@ -132,6 +140,8 @@ class SDC_Full_Env(gym.Env):
         if collect_states:
             self.old_states = np.zeros((M * 2, self.max_iters),
                                        dtype=np.complex128)
+
+
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -249,10 +259,12 @@ class SDC_Full_Env(gym.Env):
     def _inf_norm(self, v):
         return np.linalg.norm(v, np.inf)
 
-    def step(self, action):
+    def step_old(self, action):
         u, old_residual = self.state
 
-        scaled_action = self._scale_action(action)
+
+        scaled_action = self.model(self.params, self.lam)
+        #scaled_action = self._scale_action(action)
 
         Qdmat = self._get_prec(scaled_action=scaled_action) #, M=u.size)
 
@@ -304,6 +316,8 @@ class SDC_Full_Env(gym.Env):
             # check for convergence
             done = norm_res < self.restol
 
+        print(self.lam, self.niter)
+        #print(self.niter)
         if not err:
             reward = self.reward_func(
                 self.initial_residual,
@@ -315,8 +329,204 @@ class SDC_Full_Env(gym.Env):
             )
 
         done = True
+
         # self.episode_rewards.append(reward)
         # self.norm_resids.append(norm_res)
+
+
+        _u   = u.reshape(self.num_nodes, self.nvars)
+        _res = residual.reshape(self.num_nodes, self.nvars)
+
+
+        self.state = (u, residual)
+
+        if self.collect_states and self.niter < 50:
+            self.old_states[:, self.niter] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ))
+
+        print(self.nvars)
+        info = {
+            'residual': norm_res,
+            'niter': self.niter,
+            'lam': self.nvars,
+        }
+        if self.collect_states:
+            return (self.old_states, reward, done, info)
+        else:
+            return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)#(self.state, reward, done, info)
+
+
+    def step(self, action):
+        #u, old_residual = self.state
+
+
+        a=1
+        L=100.
+        
+        dx=L/self.nvars
+        x = np.arange(-L/2.,L/2.,dx)
+
+        kappa = - np.power(2*np.pi*np.fft.fftfreq(self.nvars, d=dx), 2)
+
+        _u0=np.zeros_like(x)
+
+        _u0[ int((L/2.-L/10.)/dx):int((L/2.+L/10.)/dx) ] = 1
+
+
+
+        u0hat = np.fft.fft(_u0)
+
+        ###########################################################################
+        #u0 = u0hat.copy()
+        #u = u0hat.copy()
+        iterationen=[]
+        j=0
+        for i in kappa:
+            u0 = [u0hat[j],u0hat[j],u0hat[j]]
+            u = [u0hat[j],u0hat[j],u0hat[j]]
+            j=j+1
+            C = identity(self.num_nodes) -  self.dt *  self.Q * i
+            mat0 =[]
+            mat1 =[]
+            mat2 =[]
+            mat0 = np.concatenate((mat0, self.model(self.params, i)[0][0]*i), axis=None)  
+            mat1 = np.concatenate((mat1, self.model(self.params, i)[0][1]*i), axis=None)  
+            mat2 = np.concatenate((mat2, self.model(self.params, i)[0][2]*i), axis=None)  
+            mat = sp.diags(np.concatenate((mat0, mat1, mat2), axis=None)  )
+
+            Pinv = np.linalg.inv(
+                np.eye(self.coll.num_nodes) -  self.dt * mat  ,
+            )
+            #print("mat", mat, C)
+
+            residual = np.squeeze(np.array(u0 - C @ u))
+            done = False
+            err = False
+            self.niter = 0
+
+
+            while not done and not self.niter >= self.max_iters and not err:
+                self.niter += 1
+
+                u =  np.squeeze( np.array(u + Pinv @ np.squeeze( np.array((u0 - C @ u))) ))
+
+                residual =  np.squeeze( np.array(u0 - C @ u)) 
+                norm_res = np.linalg.norm(residual, np.inf)
+                #print(norm_res)
+                if np.isnan(norm_res) or np.isinf(norm_res):
+                    self.niter = 51
+                    break
+                done = norm_res < self.restol
+            print(i, self.niter)
+            iterationen.append(self.niter)
+
+
+        reward = -1
+
+        done = True
+
+
+        self.state = (u, residual)
+
+
+        info = {
+            'residual': norm_res,
+            'niter': iterationen,
+            'lam': -kappa, #self.lam,
+        }
+
+        return (self.state, reward, done, info)
+
+        ###########################################################################
+
+
+
+
+        u0 = np.concatenate((u0hat, u0hat, u0hat), axis=None)
+        u = np.concatenate((u0hat, u0hat, u0hat), axis=None) 
+
+
+
+        C = identity(self.num_nodes*self.nvars) -  self.dt *  scipy.sparse.kron(self.Q, sp.diags(kappa))
+
+        MIN = [
+                0.3203856825077055,
+                0.1399680686269595,
+                0.3716708461097372,
+            ]
+
+        if self.prec is None:
+            mat0 =[]
+            mat1 =[]
+            mat2 =[]
+            for i in kappa:
+                #mat0 = np.concatenate((mat0, MIN[0]*i), axis=None)  
+                #mat1 = np.concatenate((mat1, MIN[1]*i), axis=None)  
+                #mat2 = np.concatenate((mat2, MIN[2]*i), axis=None) 
+                mat0 = np.concatenate((mat0, self.model(self.params, i)[0][0]*i), axis=None)  
+                mat1 = np.concatenate((mat1, self.model(self.params, i)[0][1]*i), axis=None)  
+                mat2 = np.concatenate((mat2, self.model(self.params, i)[0][2]*i), axis=None)  
+
+            #mat = scipy.sparse.kron(sp.diags(MIN), sp.diags(kappa)) #sp.diags(np.concatenate((mat0, mat1, mat2), axis=None)  )
+            mat = sp.diags(np.concatenate((mat0, mat1, mat2), axis=None)  )
+
+        else:
+            scaled_action = self._scale_action(action)
+            Qdmat = self._get_prec(scaled_action=scaled_action)         
+            mat = scipy.sparse.kron(Qdmat, sp.diags(kappa))
+
+
+        Pinv = np.linalg.inv(
+            np.eye(self.coll.num_nodes*self.nvars) -  self.dt * mat,
+        )
+
+        residual = u0 - C @ u
+
+
+        done = False
+        err = False
+        self.niter = 0
+
+
+        while not done and not self.niter >= self.max_iters and not err:
+            self.niter += 1
+            u = np.squeeze( np.array( u + Pinv @ (u0 - C @ u) ))
+
+            residual = np.squeeze( np.array( u0 - C @ u ))
+            norm_res = np.linalg.norm(residual, np.inf)
+            #print(norm_res)
+            if np.isnan(norm_res) or np.isinf(norm_res):
+                self.niter = 51
+                break
+            done = norm_res < self.restol
+
+
+        u = u.reshape(self.coll.num_nodes,self.nvars)
+
+        u__ = np.zeros_like(u)
+
+        
+        for i in range(len(u)):
+            u__[i] = np.fft.ifft(u[i])
+        #plt.plot(
+        #    x,
+        #    u_[0]
+        #)
+        #plt.plot(
+        #    x,
+        #    u_[1]
+        #)
+        #plt.plot(
+        #    x,
+        #    u__[2],
+        #    label="time 1"
+        #)
+        #plt.legend()
+        #plt.show()
+
+
+        reward = -1
+
+        done = True
 
 
         _u   = u.reshape(self.num_nodes, self.nvars)
@@ -331,12 +541,14 @@ class SDC_Full_Env(gym.Env):
         info = {
             'residual': norm_res,
             'niter': self.niter,
-            'lam': self.lam,
+            'lam': self.nvars, #self.lam,
         }
         if self.collect_states:
             return (self.old_states, reward, done, info)
         else:
             return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)#(self.state, reward, done, info)
+
+
 
     def _reset_vars(self):
         self.num_episodes += 1
@@ -378,9 +590,13 @@ class SDC_Full_Env(gym.Env):
         #u = np.ones(self.M, dtype=np.complex128)
         residual = self._compute_residual(u)
         self.initial_residual = residual
+
+        self.initial_residual_time =    np.array(     [np.linalg.norm(residual[i])  for i in range(self.num_nodes)]   ) 
+
         return (u, residual)
 
     def reset(self):
+
         self._reset_vars()
         self._generate_lambda()
         # ---------------- Now set up the problem ----------------
@@ -400,7 +616,6 @@ class SDC_Full_Env(gym.Env):
 
         self.u0 = self.prob.u0.copy()
         (u, residual) = self._compute_initial_state()
-
 
         self.state = (u, residual)
 

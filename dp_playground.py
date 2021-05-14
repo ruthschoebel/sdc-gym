@@ -273,24 +273,31 @@ def test_model(model, params, env, ntests, name,
         }
 
     num_envs = env.num_envs
+    print("range", range(num_envs))
     # Amount of test that will be ran in total
     ntests_total = ntests * num_envs
-
+    print("ntests", ntests_total, num_envs)
+    print("der ntests", ntests)
     for i in range(ntests):
+        print("i", i)
         env.reset()
         obs = jnp.array([env_.lam for env_ in env.envs]).reshape(-1, 1)
-        done = [False for _ in range(num_envs)]
+        done = [True for _ in range(num_envs)]
+        done[0] = False
+        print("done", i, done)
         if env.envs[0].prec is not None:
             action = [np.empty(env.action_space.shape,
                                dtype=env.action_space.dtype)
                       for _ in range(num_envs)]
 
         while not all(done):
+            print("hier")
             if stats_path is not None:
                 stats['obs'].append(obs)
 
             # Do not predict an action when we would discard it anyway
             if env.envs[0].prec is None:
+                #print("test", obs, model(params, obs))
                 action = model(params, obs)
                 # loss = loss_func(action, obs)
                 # print('test mean lam:', jnp.mean(obs).item(),
@@ -318,6 +325,7 @@ def test_model(model, params, env, ntests, name,
                 # lambda to make nice plots later on
                 results.append((info_['lam'].real, info_['niter']))
 
+
     # Write out mean number of iterations (smaller is better) and the
     # success rate (target: 100 %)
     if nsucc > 0:
@@ -343,6 +351,10 @@ def run_tests(model, params, args,
     `stats_path` is an optional path where to save statistics about the
     reinforcement learning test.
     """
+
+    #args.model=model
+    #args.params=params
+
     # Load the trained agent for testing
     if isinstance(model, (Path, str)):
         path = model
@@ -351,27 +363,32 @@ def run_tests(model, params, args,
 
     num_test_envs = args.batch_size
     ntests = int(args.tests)
-    ntests = utils.maybe_fix_ntests(ntests, num_test_envs)
+    #ntests = utils.maybe_fix_ntests(ntests, num_test_envs)
 
+
+    nvars = 1
+    example=0
     start_time = time.perf_counter()
     # Test the trained model.
     env = utils.make_env(args, num_envs=num_test_envs, seed=seed,
                          lambda_real_interpolation_interval=None,
-                         do_scale=False)
+                         do_scale=False, example=example, nvars=nvars, dtype=np.complex128, model=model, params=params)
+
+
     results_RL = test_model(
         model, params, env, ntests, 'RL', loss_func, stats_path=stats_path)
 
     # Restart the whole thing, but now using the LU preconditioner (no RL here)
     # LU is serial and the de-facto standard. Beat this (or at least be on par)
     # and we win!
+
     env = utils.make_env(
         args,
         num_envs=num_test_envs,
         prec='LU',
         seed=seed,
         lambda_real_interpolation_interval=None,
-        do_scale=False,
-    )
+        do_scale=False,example=example, nvars=nvars, dtype=np.complex128, model=model, params=params)
     results_LU = test_model(model, params, env, ntests, 'LU')
 
     # Restart the whole thing, but now using the minization preconditioner
@@ -384,8 +401,7 @@ def run_tests(model, params, args,
         prec='min',
         seed=seed,
         lambda_real_interpolation_interval=None,
-        do_scale=False,
-    )
+        do_scale=False, example=example, nvars=nvars, dtype=np.complex128, model=model, params=params)
     results_min = test_model(model, params, env, ntests, 'MIN')
     duration = time.perf_counter() - start_time
     print(f'Testing took {duration} seconds.')
