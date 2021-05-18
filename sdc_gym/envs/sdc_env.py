@@ -58,7 +58,9 @@ class SDC_Full_Env(gym.Env):
             nvars=1000,
             dtype=np.complex128, #np.float64,
             model=None,
-            params=None
+            params=None,
+            nu=None,
+            imex=True
     ):
 
         self.np_random = None
@@ -85,8 +87,8 @@ class SDC_Full_Env(gym.Env):
             print("running Heat-Equation")
             self.nvars=nvars
 
-
-
+        self.nu=nu
+        self.imex=imex
         self.model=model
         self.params=params
         self.example=example
@@ -115,7 +117,7 @@ class SDC_Full_Env(gym.Env):
         self.num_episodes = 0
         # self.rewards = []
         # self.episode_rewards = []
-        # self.norm_resids = []
+        # self.norm _resids = []
         # Setting the spaces: both are continuous, observation box
         # artificially bounded by some large numbers
         # note that because lambda can be complex, U can be complex,
@@ -259,7 +261,7 @@ class SDC_Full_Env(gym.Env):
     def _inf_norm(self, v):
         return np.linalg.norm(v, np.inf)
 
-    def step_old(self, action):
+    def step_rl_version(self, action):
         u, old_residual = self.state
 
 
@@ -355,7 +357,7 @@ class SDC_Full_Env(gym.Env):
             return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)#(self.state, reward, done, info)
 
 
-    def step(self, action):
+    def step_heat(self, action):
         #u, old_residual = self.state
 
 
@@ -542,6 +544,276 @@ class SDC_Full_Env(gym.Env):
             'residual': norm_res,
             'niter': self.niter,
             'lam': self.nvars, #self.lam,
+        }
+        if self.collect_states:
+            return (self.old_states, reward, done, info)
+        else:
+            return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)#(self.state, reward, done, info)
+
+
+
+    def step_(self, action):
+
+        num_nodes = self.num_nodes
+        dt = 0.01#self.dt
+        N=self.nvars
+        restol = 1e-6
+        L=10 
+        nu=self.nu
+        c=1.
+        dx=L/N
+        x = np.arange(-L/2,L/2,dx)
+
+        kx = np.arange(-L/2,L/2,dx)
+        for i in range(0, len(kx)):
+            kx[i] = 2 * np.pi / L * i
+
+
+        ddx = 2*np.pi*np.fft.fftfreq(N, d=dx)
+        lap = - np.power(ddx, 2)
+
+        k_impl = nu * lap 
+        k_expl = - c * ddx
+
+        freq =1
+        _u0 = np.arange(-L/2,L/2,dx)
+        omega = 2.0 * np.pi * freq
+        _u0 = np.sin(omega * (x - c * 0)) * np.exp(0 * nu * omega ** 2)
+
+        #_u0 = u_exact_ad(0)
+
+        u0hat = np.fft.fft(_u0)
+
+        k = k_impl + k_expl
+        coll = CollGaussRadau_Right(num_nodes, 0, 1)
+        Q = coll.Qmat[1:, 1:]
+        C = identity(num_nodes*N) -  dt *  scipy.sparse.kron(Q, sp.diags(k))
+        u0 = np.concatenate((_u0, _u0, _u0), axis=None)
+        u = np.concatenate((_u0, _u0, _u0), axis=None) 
+
+        Qdmat = np.zeros_like(Q)
+        np.fill_diagonal(Qdmat, x)
+
+        QD_expl = np.zeros(Q.shape)
+
+        for m in range(coll.num_nodes):
+            QD_expl[m, 0:m] = coll.delta_m[0:m]
+
+
+        iterationen=[]
+        j=0
+        it=0
+        for i in k:
+            u0 = [u0hat[j],u0hat[j],u0hat[j]]
+            u = [u0hat[j],u0hat[j],u0hat[j]]
+
+            C = identity(self.num_nodes) -  self.dt *  self.Q * i
+            mat0 =[]
+            mat1 =[]
+            mat2 =[]
+            mat0 = np.concatenate((mat0, self.model(self.params, k_impl[j])[0][0]*k_impl[j]), axis=None)  
+            mat1 = np.concatenate((mat1, self.model(self.params, k_impl[j])[0][1]*k_impl[j]), axis=None)  
+            mat2 = np.concatenate((mat2, self.model(self.params, k_impl[j])[0][2]*k_impl[j]), axis=None)  
+            mat = sp.diags(np.concatenate((mat0, mat1, mat2), axis=None)  )
+
+            Pinv = np.linalg.inv(
+                np.eye(self.coll.num_nodes) -  self.dt * mat -dt* QD_expl*k_expl[j],
+            )
+
+            residual = np.squeeze(np.array(u0 - C @ u))
+            done = False
+            err = False
+            self.niter = 0
+
+
+            while not done and not self.niter >= self.max_iters and not err:
+                self.niter += 1
+
+                u =  np.squeeze( np.array(u + Pinv @ np.squeeze( np.array((u0 - C @ u))) ))
+
+                residual =  np.squeeze( np.array(u0 - C @ u)) 
+                norm_res = np.linalg.norm(residual, np.inf)
+                #print(norm_res)
+                if np.isnan(norm_res) or np.isinf(norm_res):
+                    self.niter = 51
+                    break
+                done = norm_res < self.restol
+            #print(i, self.niter)
+            it = max(it, self.niter)
+            iterationen.append(self.niter)
+            j=j+1
+
+        reward = -1
+
+        done = True
+        print("iterationen", iterationen)
+
+        self.state = (u, residual)
+
+
+        info = {
+            'residual': norm_res,
+            'niter': it, #self.niter,#iterationen,
+            'lam': self.lam, #-k, #self.lam,
+            'nvars': self.nvars,
+            'nu': self.nu
+        }
+
+        return (self.state, reward, done, info)
+
+        ###########################################################################
+
+    def step(self, action):
+
+        num_nodes = self.num_nodes
+        dt = 0.01#self.dt
+        N=self.nvars
+        restol = 1e-8
+        L=10 
+        nu=10
+        c=1.
+        dx=L/N
+        x = np.arange(-L/2,L/2,dx)
+        nu=self.nu
+
+        kx = np.arange(-L/2,L/2,dx)
+        for i in range(0, len(kx)):
+            kx[i] = 2 * np.pi / L * i
+
+
+        ddx = 2*np.pi*np.fft.fftfreq(N, d=dx)
+        lap = - np.power(ddx, 2)
+
+        k_impl = nu * lap 
+        k_expl = - c * ddx
+
+
+        freq =1
+        _u0 = np.arange(-L/2,L/2,dx)
+        omega = 2.0 * np.pi * freq
+        _u0 = np.sin(omega * (x - c * 0)) * np.exp(0 * nu * omega ** 2)
+
+        #_u0 = u_exact_ad(0)
+
+        u0hat = np.fft.fft(_u0)
+
+        k = k_impl + k_expl
+        coll = CollGaussRadau_Right(num_nodes, 0, 1)
+        Q = coll.Qmat[1:, 1:]
+        C = identity(num_nodes*N) -  dt *  scipy.sparse.kron(Q, sp.diags(k))
+        u0 = np.concatenate((u0hat.copy(), u0hat.copy(), u0hat.copy()), axis=None)
+        u = np.concatenate((u0hat.copy(), u0hat.copy(), u0hat.copy()), axis=None) 
+
+        #print("u", u)
+        Qdmat = np.zeros_like(Q)
+        MIN = [
+                0.3203856825077055,
+                0.1399680686269595,
+                0.3716708461097372,
+            ]
+        np.fill_diagonal(Qdmat, MIN)
+
+        QD_expl = np.zeros(Q.shape)
+
+        for m in range(coll.num_nodes):
+            QD_expl[m, 0:m] = coll.delta_m[0:m]
+
+
+        #C = identity(self.num_nodes*self.nvars) -  self.dt *  scipy.sparse.kron(self.Q, sp.diags(k))
+
+
+
+        if self.prec is None:
+
+            if nu==0:
+                print("k_impl", k_impl)
+            mat0 =[]
+            mat1 =[]
+            mat2 =[]
+
+            if self.imex:
+                for i in k_impl:
+                    #mat0 = np.concatenate((mat0, MIN[0]*i), axis=None)  
+                    #mat1 = np.concatenate((mat1, MIN[1]*i), axis=None)  
+                    #mat2 = np.concatenate((mat2, MIN[2]*i), axis=None) 
+                    mat0 = np.concatenate((mat0, self.model(self.params, i)[0][0]*i), axis=None)  
+                    mat1 = np.concatenate((mat1, self.model(self.params, i)[0][1]*i), axis=None)  
+                    mat2 = np.concatenate((mat2, self.model(self.params, i)[0][2]*i), axis=None)  
+            else:
+                for i in k:
+                    #mat0 = np.concatenate((mat0, MIN[0]*i), axis=None)  
+                    #mat1 = np.concatenate((mat1, MIN[1]*i), axis=None)  
+                    #mat2 = np.concatenate((mat2, MIN[2]*i), axis=None) 
+                    mat0 = np.concatenate((mat0, self.model(self.params, i)[0][0]*i), axis=None)  
+                    mat1 = np.concatenate((mat1, self.model(self.params, i)[0][1]*i), axis=None)  
+                    mat2 = np.concatenate((mat2, self.model(self.params, i)[0][2]*i), axis=None)  
+
+            mat = sp.diags(np.concatenate((mat0, mat1, mat2), axis=None)  )  # +  scipy.sparse.kron(QD_expl, sp.diags(k_expl)) #sp.diags(np.concatenate((mat0_, mat1_, mat2_), axis=None)  )   
+
+        else:
+            scaled_action = self._scale_action(action)
+            Qdmat = self._get_prec(scaled_action=scaled_action)
+            if self.imex:    
+                if self.prec.upper() == 'LU': 
+                    mat = scipy.sparse.kron(Qdmat, sp.diags(k_impl)) +  scipy.sparse.kron(QD_expl, sp.diags(k_expl))
+                else:
+                    mat = scipy.sparse.kron(Qdmat, sp.diags(k_impl))
+            else:
+                mat = scipy.sparse.kron(Qdmat, sp.diags(k))
+
+        Pinv = np.linalg.inv(
+            np.eye(self.coll.num_nodes*self.nvars) -  dt * mat,
+        )
+
+        residual = u0 - C @ u
+
+
+        done = False
+        err = False
+        self.niter = 0
+
+
+        while not done and not self.niter >= self.max_iters and not err:
+            self.niter += 1
+            #print(u.shape, u0.shape, Pinv.shape, C.shape)
+            u = np.squeeze( np.array( u + Pinv @ (u0 - C @ u) ))
+
+            residual = np.squeeze( np.array( u0 - C @ u ))
+            norm_res = np.linalg.norm(residual, np.inf)
+            print(norm_res)
+            if np.isnan(norm_res) or np.isinf(norm_res):
+                self.niter = 51
+                break
+            done = norm_res < self.restol
+
+
+        u = u.reshape(self.coll.num_nodes,self.nvars)
+
+        u__ = np.zeros_like(u)
+
+        
+        for i in range(len(u)):
+            u__[i] = np.fft.ifft(u[i])
+
+        reward = -1
+
+        done = True
+
+
+        _u   = u.reshape(self.num_nodes, self.nvars)
+        _res = residual.reshape(self.num_nodes, self.nvars)
+
+
+        self.state = (u, residual)
+
+        if self.collect_states and self.niter < 50:
+            self.old_states[:, self.niter] = np.concatenate((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ))
+
+        info = {
+            'residual': norm_res,
+            'niter': self.niter,
+            'nvars': self.nvars, #self.lam,
+            'nu': self.nu
         }
         if self.collect_states:
             return (self.old_states, reward, done, info)
@@ -796,7 +1068,6 @@ class SDC_Full_Env(gym.Env):
         plt.savefig('rewards.pdf', bbox_inches='tight')
         plt.show()
 
-
 class SDC_Step_Env(SDC_Full_Env):
     """This environment implements a single iteration of SDC, i.e.
     for each step we just do one iteration and stop if
@@ -893,3 +1164,4 @@ class SDC_Step_Env(SDC_Full_Env):
         else:
 
             return ((np.array([np.linalg.norm(_u[i], np.inf)  for i in range(self.num_nodes)]) , np.array([np.linalg.norm(_res[i], np.inf)  for i in range(self.num_nodes)])          ), reward, done, info)
+

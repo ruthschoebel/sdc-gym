@@ -176,16 +176,25 @@ def test_model(model, env, ntests, name, stats_path=None):
     return results
 
 
-def plot_results(results, color, label):
+def plot_results(results, color, label, marker=False):
     sorted_results = sorted(results, key=lambda x: x[0])
-    #plt.xscale('log')
-    plt.plot(
-        [i[0] for i in sorted_results],
-        [i[1] for i in sorted_results],
-        color=color,
-        label=label,
-        linestyle='--', marker='o'
-    )
+    plt.xscale('log')
+    if marker:
+        plt.plot(
+            [i[0] for i in sorted_results],
+            [i[1] for i in sorted_results],
+            color=color,
+            label=label,
+            marker='o'
+        )
+    else:
+        plt.plot(
+            [i[0] for i in sorted_results],
+            [i[1] for i in sorted_results],
+            color=color,
+            label=label,
+            linestyle='--'
+        )
 
 
 
